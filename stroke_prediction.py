@@ -14,7 +14,7 @@ from lightgbm import LGBMClassifier
 from sklearn.ensemble import VotingClassifier
 
 # --- Load Dataset ---
-file_path = "stroke_data.csv"  # Updated to match actual file name
+file_path = "Stroke.csv"  # Updated to match actual file name
 
 if os.path.exists(file_path):
     data = pd.read_csv(file_path)
@@ -75,6 +75,10 @@ scaler = RobustScaler()
 X_train_scaled = scaler.fit_transform(X_train_balanced)
 X_test_scaled = scaler.transform(X_test)
 
+# Convert scaled data back to DataFrame to preserve feature names
+X_train_scaled_df = pd.DataFrame(X_train_scaled, columns=X_train.columns)
+X_test_scaled_df = pd.DataFrame(X_test_scaled, columns=X_test.columns)
+
 # --- Model Training ---
 # Create multiple models for ensemble
 xgb_model = XGBClassifier(
@@ -84,6 +88,7 @@ xgb_model = XGBClassifier(
     n_jobs=-1
 )
 
+# Create LightGBM classifier with scikit-learn API only
 lgb_model = LGBMClassifier(
     objective='binary',
     random_state=42,
@@ -100,14 +105,14 @@ xgb_param_grid = {
     'min_child_weight': [1, 3, 5]
 }
 
-# Hyperparameter Tuning for LightGBM
+# Hyperparameter Tuning for LightGBM - Using only scikit-learn API parameters
 lgb_param_grid = {
     'n_estimators': [200, 300, 400],
     'max_depth': [4, 6, 8],
     'learning_rate': [0.01, 0.05, 0.1],
     'num_leaves': [31, 63, 127],
-    'feature_fraction': [0.8, 0.9, 1.0],
-    'bagging_fraction': [0.8, 0.9, 1.0]
+    'subsample': [0.8, 0.9, 1.0],
+    'colsample_bytree': [0.8, 0.9, 1.0]
 }
 
 # Perform Grid Search for both models
@@ -115,9 +120,9 @@ xgb_grid = GridSearchCV(xgb_model, xgb_param_grid, scoring='roc_auc', cv=5, n_jo
 lgb_grid = GridSearchCV(lgb_model, lgb_param_grid, scoring='roc_auc', cv=5, n_jobs=-1)
 
 print("Training XGBoost model...")
-xgb_grid.fit(X_train_scaled, y_train_balanced)
+xgb_grid.fit(X_train_scaled_df, y_train_balanced)
 print("Training LightGBM model...")
-lgb_grid.fit(X_train_scaled, y_train_balanced)
+lgb_grid.fit(X_train_scaled_df, y_train_balanced)
 
 # Create ensemble model
 ensemble = VotingClassifier(
@@ -130,15 +135,15 @@ ensemble = VotingClassifier(
 
 # Train ensemble model
 print("Training ensemble model...")
-ensemble.fit(X_train_scaled, y_train_balanced)
+ensemble.fit(X_train_scaled_df, y_train_balanced)
 
 # --- Model Evaluation ---
-y_pred = ensemble.predict(X_test_scaled)
+y_pred = ensemble.predict(X_test_scaled_df)
 accuracy = accuracy_score(y_test, y_pred)
 precision = precision_score(y_test, y_pred, average='weighted', zero_division=1)
 recall = recall_score(y_test, y_pred, average='weighted')
 f1 = f1_score(y_test, y_pred, average='weighted')
-roc_auc = roc_auc_score(y_test, ensemble.predict_proba(X_test_scaled)[:, 1])
+roc_auc = roc_auc_score(y_test, ensemble.predict_proba(X_test_scaled_df)[:, 1])
 mcc = matthews_corrcoef(y_test, y_pred)
 
 # Print Model Performance
